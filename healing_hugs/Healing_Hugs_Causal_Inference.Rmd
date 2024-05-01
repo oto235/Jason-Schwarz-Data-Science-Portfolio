@@ -1,0 +1,157 @@
+---
+title: "Healing Hugs: Causal Inference"
+output: html_document
+date: '2024-03-22'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+SUTVA may not hold in regards to the "no interference" assumption. If husband receives a healing hug one day, it can be argued he might be less likely to receive one the next day. Maybe he doesn't seek one out, or maybe his wife does not feel the need to give one. 
+
+We will assume the multiple versions of treatment do not apply. However, one can argue a 10-minute workout does not have the same effect as a 60-minute workout. But perhaps a reason the "workout" helps is because it signals the wife has time to workout. Perhaps the benefit is there. 
+
+Internal validity may hold. External validity may not transfer to all relationships. Sample size of 1. However, for this relationship, it probably holds well enough. 
+
+Because exercise has a higher correlation to receiving a healing hug, the husband was curious about causation. Let's treat it as a "cause". This is an observational study, so we will need to consider how it might have looked if it was a randomized control trial. Basically, we want an equal number of treatment units and control units. We want them to look as similar as possible. Perhaps we need to block based on days of the week. 
+
+Because the treatment (exercise) occurs with much lower frequency than the controls, we will use all of the treatment units and find controls that are most similar to the treatment units. 
+
+We can do this a variety of ways. Because this project is done in part to showcase my skills, I will use multiple ways - if appropriate. 
+First, let's us propensity score. 
+
+Importantly even for internal validity, even if we find a causal relationship between exercise and a healing hug, we must at least consider how exercise was applied in the observational study. Our analysis will have the most internal validity if the variables leading to the wife exercising is also applied in the future. Perhaps the husband created an environment that led to his wife feeling like exercising. Perhaps that environment and/or feeling led to the healing hug, not the exercising. Even if that was the case, the husband creating these environments are arguably good for the relationship. So whether there is a (arguably healthy) confounding variable or the causal variable is exercising, we feel confident about recommending the husband facilitating his wife working out. 
+
+To be explicitly fair, maybe talk about the husband working out. 
+
+TODO check overlap
+
+Design Trumps Analysis
+
+What is the question? What things are causes to increased healing hugs? They need to be modifiable. Day of week, for example, is not modifiable, but may help people understand natural cycles. What is the causal effect of [modifiable things] on healing hugs among this husband-wife relationship? 
+
+what is the causal effect of a wife exercising on the husband receiving a healing hug from her?
+
+Fives types of covariates:
+1. Confounders associated with treatment and outcome. 
+  day of week
+  shift
+  PTO
+2. Predictors associated with outcome only
+  ??
+3. Instruments associated with treatment only
+  don't include these
+4. Noise not associated with either
+  don't include these
+5. Post-treatment: potentially affected by treatment
+  don't include these
+
+treatment - exercise
+control - no exercise
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+This next code chuck imports the data and inspects it for NaN's. 
+
+```{r}
+rm(list=ls())
+
+hh <- read.csv("healing_hugs.csv", header=TRUE)
+head(hh)
+summary(hh)
+
+```
+From the above, I see several items that require action. 
+
+First, there are many NA's that need imputing. Discussion with the client revealed it would be appropriate to change all NA's to 0. Easy enough. 
+
+Second, 'Healing_hug' is the target, and it is wise to remove it prior to doing analysis. 
+
+Third, 'Work_shift' has an empty level. I will change this to an explicit level. Further, 'early' is listed twice. I will investigate this issue and adjust it appropriately.  
+
+Fourth, thinking through these variables carefully, it is best to consider each one as a categorical variable; None of them are continuous. Thus, I will covert them prior to modeling. 
+
+******Note: The astute reader may wonder why days of week differ by more than 2. This is due to the data being rescinded prior to public viewing per request of the client. 
+
+I will use propensity scores and logistic regression and matching, check for overlap and balance to determine the validity of causal effect from this observational data. 
+
+TODO check with factors and ints/nums. Is there a big difference? 
+
+ 
+```{r}
+# change all Na's to 0
+hh[is.na(hh)] = 0
+# confirm change
+summary(hh)
+
+# set to factor and remove target column
+hh$Healing_hug <- as.factor(hh$Healing_hug)  # this may not be needed
+target = hh$Healing_hug
+hh <- subset(hh, select = -Healing_hug)
+
+# preprocess a couple items
+unique(hh$Day_of_week)
+unique(hh$Work_shift)
+hh$Work_shift[hh$Work_shift == ""] <- "none"
+hh$Work_shift[hh$Work_shift == "early "] <- "early"
+unique(hh$Work_shift)
+
+# change categorical variables to factors for logistic regression (because numbers representing these categories should not be thought off as continuous)
+hhf <- hh %>% mutate_all(as.factor)
+str(hhf)
+summary(hh)
+
+```
+To "design" this observational data as a randomized control trial, I need sufficient overlap of covariates. Let's visually check with histograms.
+
+```{r}
+# check overlap of variables
+hist(hh$Month[hh$Workout==0])
+hist(hh$Month[hh$Workout==1])
+
+
+ggplot(hh, aes(x = Month, fill = as.factor(Workout))) +
+  geom_bar(position = "dodge")
+
+ggplot(hh, aes(x = Day_of_week, fill = as.factor(Workout))) +
+  geom_bar(position = "dodge")
+
+ggplot(hh, aes(x = Work_shift, fill = as.factor(Workout))) +
+  geom_bar(position = "dodge")
+
+ggplot(hh, aes(x = Year, fill = as.factor(Workout))) +
+  geom_bar(position = "dodge")
+
+ggplot(hh, aes(x = Pto, fill = as.factor(Workout))) +
+  geom_bar(position = "dodge")
+
+
+hh <- mutate_if(hh, is.character , as.factor)
+str(hh)
+hist(hh$Day_of_week[hh$Workout==0])
+
+
+```
+
+
